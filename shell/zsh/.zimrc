@@ -2,9 +2,8 @@
 zmodule zimfw/environment
 zmodule zimfw/git-info
 zmodule zimfw/input
-zmodule zimfw/utility
 zmodule zimfw/completion
+zmodule zimfw/utility
 zmodule zsh-users/zsh-syntax-highlighting
 zmodule zsh-users/zsh-autosuggestions
-zmodule zsh-users/zsh-completions --fpath src
 

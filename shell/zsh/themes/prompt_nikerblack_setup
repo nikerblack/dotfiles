@@ -12,6 +12,8 @@ CODELY_THEME_STATUS_ICON_KO=${CODELY_THEME_STATUS_ICON_KO:-"▪"}
 
 git_no_changes_status="✓"
 git_dirty_status="✗"
+open_brace_key="%{{%}"
+close_brace_key="%{}%}"
 
 if [ "$CODELY_THEME_MODE" = "dark" ]; then
   git_branch_color="magenta"
@@ -53,8 +55,8 @@ prompt_codely_precmd() {
   (( ${+functions[git-info]} )) && git-info
 }
 
-prompt_codely_setup() {
-  local prompt_codely_status="%(?:%F{$diamond_color_success}{%F{$status_icon_color}$CODELY_THEME_STATUS_ICON_OK%F{$diamond_color_success}}:%F{$diamond_color_error}{%F{$status_icon_color}$CODELY_THEME_STATUS_ICON_KO%F{$diamond_color_error}})"
+prompt_nikerblack_setup() {
+  local prompt_codely_status="%(?:%F{$diamond_color_success}$open_brace_key%F{$status_icon_color}$CODELY_THEME_STATUS_ICON_OK%F{$diamond_color_success}$close_brace_key:%F{$diamond_color_error}$open_brace_key%F{$status_icon_color}$CODELY_THEME_STATUS_ICON_KO%F{$diamond_color_error}$close_brace_key)"
 
   autoload -Uz add-zsh-hook && add-zsh-hook precmd prompt_codely_precmd
 
@@ -79,4 +81,4 @@ prompt_codely_setup() {
   RPS1=''
 }
 
-prompt_codely_setup "${@}"
+prompt_nikerblack_setup "${@}"
