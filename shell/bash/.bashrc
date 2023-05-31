@@ -1,6 +1,7 @@
 export DOTFILES_PATH="/Users/sergio.alfonso/.dotfiles"
 export DOTLY_PATH="$DOTFILES_PATH/modules/dotly"
 export DOTLY_THEME="codely"
+export BASH_SILENCE_DEPRECATION_WARNING=1
 
 source "$DOTFILES_PATH/shell/init.sh"
 

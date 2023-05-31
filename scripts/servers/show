@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+source "$DOTLY_PATH/scripts/core/_main.sh"
+
+##? Show used port
+##?
+##? Usage:
+##?    stop
+docs::parse "$@"
+
+ps | grep "/data/app/jdk" | awk '{print $1 "\t" $4}'

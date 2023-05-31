@@ -1,0 +1,174 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+source "$DOTLY_PATH/scripts/core/_main.sh"
+
+##? Stop server acc
+##?
+##? Usage:
+##?    debug
+docs::parse "$@"
+
+echo "Move to tmp folder"
+cd /tmp
+
+
+echo "Getting the original pf zip file and unzip it in /data/servers"
+mvn org.apache.maven.plugins:maven-dependency-plugin:2.8:copy -Dartifact=k12.sso:ping-federate:11.1.1:zip -DoutputDirectory=. # Gets pf server from nexus
+unzip -o ping-federate-11.1.1.zip # Unzip the server
+
+echo "Downloading Dev Configuration"
+PF_USER="Administrator"; # The admin user name
+PF_PASS="Federate2" ; # REPLACE THIS WITH THE REAL PASSWORD
+PF_ADMIN_HOST=internal-admin-sso-pf-mps-aws.dev.k12.com ; # The dev admin
+curl -k -v --location --request GET "https://$PF_ADMIN_HOST/pf-admin-api/v1/configArchive/export" \
+--header 'X-Xsrf-Header: PingFederate' \
+--header 'Content-Type: application/json' \
+--user "$PF_USER:$PF_PASS" \
+--output pf-config.zip # Gets the config
+
+
+echo "Getting pf branding and deploy into brand new pf directory"
+
+mvn org.apache.maven.plugins:maven-dependency-plugin:2.8:copy -Dartifact=k12.sso:sso-pf-mps-branding:LATEST:tar.gz:local -DoutputDirectory=.; # Gets the latest version of branding from nexus. Alternatively you can
+# or just build from  the source
+#git clone https://bitbucket.org/DevelopmentOps/sso-pf-mps-branding ;
+#cd sso-pf-mps-branding ;
+#git checkout feature/aws-migration ; # checks the proper branch
+#mvn clean package;
+#find target/ -type f | grep -i local.tar.gz$ | xargs -i cp {} ../pf-mps-branding.tar.gz -v
+#cd ..
+
+echo "Getting pf license and deploy into brand new pf directory"
+mvn org.apache.maven.plugins:maven-dependency-plugin:2.8:copy -Dartifact=k12.sso:sso-pf-mps-license:LATEST:tar.gz:local -DoutputDirectory=.; # Gets the latest version of licenses from nexus. Alternatively you can build following the source
+#git clone https://bitbucket.org/DevelopmentOps/sso-pf-mps-license ;
+#cd sso-pf-mps-license
+#git checkout feature/aws-migration ; # checks the proper branch
+#mvn clean package
+#find target/ -type f | grep -i local.tar.gz$ | xargs -i cp {} ../pf-mps-license.tar.gz -v
+#cd ..
+
+echo "Configuring cluster following https://confluence.k12.com/display/idms/Ping+Federate+-+Local+Cluster+Installation"
+
+echo "Setting up PF admin"
+
+if [[ ! -e /data/servers/cluster/pf11-mps-admin ]]; then
+  echo "Directory not exits"
+  mkdir -p /data/servers/cluster/pf11-mps-admin
+
+  echo "Create log,work directory"
+  mkdir /data/servers/cluster/pf11-mps-admin/log
+  mkdir /data/servers/cluster/pf11-mps-admin/work
+else
+  echo "Directory exits"
+fi
+
+
+if [[ -e /data/servers/cluster/pf11-mps-admin && -d /data/servers/cluster/pf11-mps-admin ]]; then
+
+  echo "Move PF installation to pf11-mps-admin"
+  cp -R pingfederate-11.1.1/pingfederate/ /data/servers/cluster/pf11-mps-admin/
+  echo "Move sso-pf-mps-license artifact to pf11-mps-admin"
+  tar -xvzf sso-pf-mps-license-*.tar.gz -C /data/servers/cluster/pf11-mps-admin/ # Untar the license. Alternatively this can be done from you source directory
+  echo "Move sso-pf-mps-branding artifact to pf11-mps-admin"
+  tar -xvzf sso-pf-mps-branding-*.tar.gz -C /data/servers/cluster/pf11-mps-admin/ # Untar the branding. Alternatively this can be done from you source directory
+
+  echo "Configuring admin"
+  sed -i -e  's/pf.admin.https.port=9999/pf.admin.https.port=19999/g'  /data/servers/cluster/pf11-mps-admin/bin/run.properties
+  sed -i -e  's/pf.http.port=9032/pf.http.port=9033/g'  /data/servers/cluster/pf11-mps-admin/bin/run.properties
+  sed -i -e  's/pf.operational.mode=STANDALONE/pf.operational.mode=CLUSTERED_CONSOLE/g'  /data/servers/cluster/pf11-mps-admin/bin/run.properties
+  sed -i -e  's/pf.https.port=9031/pf.https.port=-1/g'  /data/servers/cluster/pf11-mps-admin/bin/run.properties
+  sed -i -e  's/pf.cluster.node.index=.*$/pf.cluster.node.index=1/g'  /data/servers/cluster/pf11-mps-admin/bin/run.properties
+  sed -i -e  's/pf.cluster.bind.address=NON_LOOPBACK/pf.cluster.bind.address=localhost/g'  /data/servers/cluster/pf11-mps-admin/bin/run.properties ; # we should use somehting better than local-idp
+  sed -i -e  's/pf.cluster.bind.port=7600/pf.cluster.bind.port=7604/g'  /data/servers/cluster/pf11-mps-admin/bin/run.properties ; # it should be 7600 but is to run in local
+  sed -i -e  's/pf.cluster.failure.detection.bind.port=7700/pf.cluster.failure.detection.bind.port=7704/g'  /data/servers/cluster/pf11-mps-admin/bin/run.properties ; # it should be 7700 but is to run in local
+  sed -i -e  's/pf.cluster.tcp.discovery.initial.hosts=/pf.cluster.tcp.discovery.initial.hosts=localhost[7604],localhost[7605],localhost[7606]/g'  /data/servers/cluster/pf11-mps-admin/bin/run.properties ; # it 's to run in local
+  sed -i -e  "s/preferred.node.indices=/preferred.node.indices=1/g" /data/servers/cluster/pf11-mps-admin/server/default/conf/cluster-assertion-replay-prevention.conf
+  sed -i -e  "s/preferred.node.indices=/preferred.node.indices=1/g"  /data/servers/cluster/pf11-mps-admin/server/default/conf/cluster-idp-session-registry.conf
+  sed -i -e  "s/preferred.node.indices=/preferred.node.indices=1/g" /data/servers/cluster/pf11-mps-admin/server/default/conf/cluster-inter-request-state.conf
+  sed -i -e  "s/preferred.node.indices=/preferred.node.indices=1/g" /data/servers/cluster/pf11-mps-admin/server/default/conf/cluster-sp-session-registry.conf
+  sed -i -e  's/rmi.registry.port">1099/rmi.registry.port">10994/g' /data/servers/cluster/pf11-mps-admin/server/default/conf/jmx-remote-config.xml
+
+
+  echo "Deploying dev config"
+  unzip -o pf-config.zip  -d /data/servers/cluster/pf11-mps-admin/server/default/data ;
+
+  echo "PF Admin Setup complete"
+
+
+fi
+
+
+
+if [[ ! -e /data/servers/cluster/pf11-mps-rt2 ]]; then
+  echo "Directory not exits"
+  mkdir -p /data/servers/cluster/pf11-mps-rt2
+
+  echo "Create log,work directory"
+  mkdir /data/servers/cluster/pf11-mps-rt2/log
+  mkdir /data/servers/cluster/pf11-mps-rt2/work
+else
+  echo "Directory exits"
+fi
+
+if [[ -e /data/servers/cluster/pf11-mps-rt2 && -d /data/servers/cluster/pf11-mps-rt2 ]]; then
+  echo "Setting up PF RT 2"
+  cp -R pingfederate-11.1.1/pingfederate/ /data/servers/cluster/pf11-mps-rt2/
+  tar -xvzf sso-pf-mps-license-*.tar.gz  -C /data/servers/cluster/pf11-mps-rt2/
+  tar -xvzf sso-pf-mps-branding-*.tar.gz -C /data/servers/cluster/pf11-mps-rt2/
+
+  echo "Configuring rt2"
+  sed -i -e  's/pf.http.port=9032/pf.http.port=9035/g'  /data/servers/cluster/pf11-mps-rt2/bin/run.properties
+  sed -i -e  's/pf.operational.mode=STANDALONE/pf.operational.mode=CLUSTERED_ENGINE/g'  /data/servers/cluster/pf11-mps-rt2/bin/run.properties
+  sed -i -e  's/pf.https.port=9031/pf.https.port=-1/g'  /data/servers/cluster/pf11-mps-rt2/bin/run.properties
+  sed -i -e  's/pf.cluster.node.index=.*$/pf.cluster.node.index=2/g'  /data/servers/cluster/pf11-mps-rt2/bin/run.properties
+  sed -i -e  's/pf.cluster.bind.address=NON_LOOPBACK/pf.cluster.bind.address=localhost/g'  /data/servers/cluster/pf11-mps-rt2/bin/run.properties ; # we should use somehting better than local-idp
+  sed -i -e  's/pf.cluster.bind.port=7600/pf.cluster.bind.port=7605/g'  /data/servers/cluster/pf11-mps-rt2/bin/run.properties ; # it should be 7600 but is to run in local
+  sed -i -e  's/pf.cluster.failure.detection.bind.port=7700/pf.cluster.failure.detection.bind.port=7705/g'  /data/servers/cluster/pf11-mps-rt2/bin/run.properties ; # it should be 7700 but is to run in local
+  sed -i -e  's/pf.cluster.tcp.discovery.initial.hosts=/pf.cluster.tcp.discovery.initial.hosts=localhost[7604],localhost[7605],localhost[7606]/g'  /data/servers/cluster/pf11-mps-rt2/bin/run.properties ; # it 's to run in local
+  sed -i -e  "s/preferred.node.indices=/preferred.node.indices=2/g" /data/servers/cluster/pf11-mps-rt2/server/default/conf/cluster-assertion-replay-prevention.conf
+  sed -i -e  "s/preferred.node.indices=/preferred.node.indices=2/g"  /data/servers/cluster/pf11-mps-rt2/server/default/conf/cluster-idp-session-registry.conf
+  sed -i -e  "s/preferred.node.indices=/preferred.node.indices=2/g" /data/servers/cluster/pf11-mps-rt2/server/default/conf/cluster-inter-request-state.conf
+  sed -i -e  "s/preferred.node.indices=/preferred.node.indices=2/g" /data/servers/cluster/pf11-mps-rt2/server/default/conf/cluster-sp-session-registry.conf
+  sed -i -e  's/rmi.registry.port">1099/rmi.registry.port">10995/g' /data/servers/cluster/pf11-mps-rt2/server/default/conf/jmx-remote-config.xml
+
+
+  echo "PF RT2 Setup complete"
+fi
+
+if [[ ! -e /data/servers/cluster/pf11-mps-rt3 ]]; then
+  echo "Directory not exits"
+  mkdir -p /data/servers/cluster/pf11-mps-rt3
+
+  echo "Create log,work directory"
+mkdir /data/servers/cluster/pf11-mps-rt3/log
+mkdir /data/servers/cluster/pf11-mps-rt3/work
+else
+  echo "Directory exits"
+fi
+
+if [[ -e /data/servers/cluster/pf11-mps-rt3 && -d /data/servers/cluster/pf11-mps-rt3 ]]; then
+  echo "Setting up PF RT 3"
+  cp -R pingfederate-11.1.1/pingfederate/ /data/servers/cluster/pf11-mps-rt3/
+  tar -xvzf sso-pf-mps-license-*.tar.gz  -C /data/servers/cluster/pf11-mps-rt3/
+  tar -xvzf sso-pf-mps-branding-*.tar.gz  -C /data/servers/cluster/pf11-mps-rt3/
+
+
+  echo "Configuring rt3"
+  sed -i -e  's/pf.http.port=9032/pf.http.port=9036/g'  /data/servers/cluster/pf11-mps-rt3/bin/run.properties
+  sed -i -e  's/pf.operational.mode=STANDALONE/pf.operational.mode=CLUSTERED_ENGINE/g'  /data/servers/cluster/pf11-mps-rt3/bin/run.properties
+  sed -i -e  's/pf.https.port=9031/pf.https.port=-1/g'  /data/servers/cluster/pf11-mps-rt3/bin/run.properties
+  sed -i -e  's/pf.cluster.node.index=.*$/pf.cluster.node.index=3/g'  /data/servers/cluster/pf11-mps-rt3/bin/run.properties
+  sed -i -e  's/pf.cluster.bind.address=NON_LOOPBACK/pf.cluster.bind.address=localhost/g'  /data/servers/cluster/pf11-mps-rt3/bin/run.properties ; # we should use somehting better than local-idp
+  sed -i -e  's/pf.cluster.bind.port=7600/pf.cluster.bind.port=7606/g'  /data/servers/cluster/pf11-mps-rt3/bin/run.properties ; # it should be 7600 but is to run in local
+  sed -i -e  's/pf.cluster.failure.detection.bind.port=7700/pf.cluster.failure.detection.bind.port=7706/g'  /data/servers/cluster/pf11-mps-rt3/bin/run.properties ; # it should be 7700 but is to run in local
+  sed -i -e  's/pf.cluster.tcp.discovery.initial.hosts=/pf.cluster.tcp.discovery.initial.hosts=localhost[7604],localhost[7605],localhost[7606]/g'  /data/servers/cluster/pf11-mps-rt3/bin/run.properties ; # it 's to run in local
+  sed -i -e  "s/preferred.node.indices=/preferred.node.indices=3/g" /data/servers/cluster/pf11-mps-rt3/server/default/conf/cluster-assertion-replay-prevention.conf
+  sed -i -e  "s/preferred.node.indices=/preferred.node.indices=3/g"  /data/servers/cluster/pf11-mps-rt3/server/default/conf/cluster-idp-session-registry.conf
+  sed -i -e  "s/preferred.node.indices=/preferred.node.indices=3/g" /data/servers/cluster/pf11-mps-rt3/server/default/conf/cluster-inter-request-state.conf
+  sed -i -e  "s/preferred.node.indices=/preferred.node.indices=3/g" /data/servers/cluster/pf11-mps-rt3/server/default/conf/cluster-sp-session-registry.conf
+  sed -i -e  's/rmi.registry.port">1099/rmi.registry.port">10996/g' /data/servers/cluster/pf11-mps-rt3/server/default/conf/jmx-remote-config.xml
+
+  echo "PF RT3 Setup complete"
+fi

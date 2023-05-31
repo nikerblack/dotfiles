@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+source "$DOTLY_PATH/scripts/core/_main.sh"
+
+##? Stop server according with current directory
+##?
+##? Usage:
+##?    debug
+docs::parse "$@"
+
+dot servers update
+
+./bin/catalina.sh jpda start -agentlib:jdwp=transport=dt_socket,address=8000,server=y,suspend=n && tail -f logs/catalina.out

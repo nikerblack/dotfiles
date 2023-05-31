@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+source "$DOTLY_PATH/scripts/core/_main.sh"
+
+##? Stop server according with current directory
+##?
+##? Usage:
+##?    stop
+docs::parse "$@"
+
+./bin/shutdown.sh && rm -fR work/* && echo "work eliminated"

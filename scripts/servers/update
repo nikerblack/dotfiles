@@ -1,0 +1,54 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+source "$DOTLY_PATH/scripts/core/_main.sh"
+
+##? Stop server acc
+##?
+##? Usage:
+##?    debug
+docs::parse "$@"
+
+case $(pwd) in
+/data/servers/tc-accounts-svc)
+    sed -i "s/8080/9989/g" ./conf/server.xml;
+    sed -i "s/8005/10911/g" ./conf/server.xml;
+    sed -i "s/-Xms256M -Xmx4096M/-Xms128m -Xmx512m/g" ./bin/appenv.sh
+    ;;
+/data/servers/tc-accounts-plus-svc)
+    sed -i "s/8080/9938/g" ./conf/server.xml;
+    sed -i "s/8005/10038/g" ./conf/server.xml;
+    sed -i "s/-Xms256M -Xmx4096M/-Xms128M -Xmx512M/g" ./bin/appenv.sh
+    ;;
+/data/servers/tc-idms-proxy)
+    sed -i "s/8080/9920/g" ./conf/server.xml;
+    sed -i "s/8005/10020/g" ./conf/server.xml;
+    sed -i "s/-Xms256M -Xmx4096M/-Xms128M -Xmx512M/g" ./bin/appenv.sh
+    ;;
+/data/servers/tc-keycode)
+    sed -i "s/8080/22127/g" ./conf/server.xml;
+    sed -i "s/8009/26127/g" ./conf/server.xml;
+    sed -i "s/8005/24127/g" ./conf/server.xml;
+    sed -i "s/-Xms256M -Xmx4096M/-Xms128m -Xmx512m/g" ./bin/appenv.sh
+    ;;
+/data/servers/tc-o365-non-academic-staff-tool-ui)
+    sed -i "s/8080/10003/g" ./conf/server.xml;
+    sed -i "s/8005/10010/g" ./conf/server.xml;
+    sed -i "s/-Xms256M -Xmx4096M/-Xms128M -Xmx512M/g" ./bin/appenv.sh
+    ;;
+/data/servers/tc-okta-proxy)
+    sed -i "s/8080/9920/g" ./conf/server.xml;
+    sed -i "s/8005/10020/g" ./conf/server.xml;
+    sed -i "s/-Xms256M -Xmx4096M/-Xms128M -Xmx512M/g" ./bin/appenv.sh
+    ;;
+/data/servers/tc-security-gateway-svc)
+    sed -i "s/8080/9932/g" ./conf/server.xml;
+    sed -i "s/8009/10032/g" ./conf/server.xml;
+    sed -i "s/8005/10932/g" ./conf/server.xml;
+    sed -i "s/-Xms256M -Xmx4096M/-Xms128m -Xmx512m/g" ./bin/appenv.sh
+    ;;
+*)
+    echo "You are not in the correct path"
+    ;;
+esac
